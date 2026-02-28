@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>單詞卡片系統 - 複習版</title>
+    <style>
+        :root {
+            --card-width: 350px;
+            --card-height: 220px;
+            --primary-color: #007bff;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --secondary-color: #6c757d;
+            --review-color: #17a2b8;
+            --dark-gray: #343a40;
+            --border-radius: 12px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f0f8ff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            transition: background-color 0.3s;
+        }
+        body.review-mode {
+            background-color: #e3f2fd;
+        }
+
+        #app-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            width: 100%;
+            max-width: var(--card-width);
+            padding: 0 15px;
+            box-sizing: border-box;
+        }
+
+        .flashcard-scene {
+            width: 100%;
+            height: var(--card-height);
+            perspective: 1000px;
+        }
+
+        .flashcard {
+            width: 100%; height: 100%; position: relative;
+            transform-style: preserve-3d; transition: transform 0.6s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: var(--border-radius);
+        }
+        .flashcard.is-flipped { transform: rotateY(180deg); }
+
+        .card-face {
+            position: absolute; width: 100%; height: 100%;
+            -webkit-backface-visibility: hidden; backface-visibility: hidden;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 2.2em; font-weight: bold; border-radius: var(--border-radius);
+            padding: 20px; box-sizing: border-box; text-align: center;
+        }
+        .card-face-front { background-color: #fff; color: var(--dark-gray); }
+        .card-face-back { background-color: var(--primary-color); color: white; transform: rotateY(180deg); }
+        .review-mode .card-face-back { background-color: var(--review-color); }
+
+        #stats-container { width: 100%; display: flex; justify-content: space-between; font-size: 1em; color: #6c757d; font-weight: 500; }
+        #input-container { width: 100%; display: flex; gap: 10px; }
+        #answer-input {
+            flex-grow: 1; padding: 10px; font-size: 1em;
+            border: 2px solid #ced4da; border-radius: 8px; transition: border-color 0.2s;
+        }
+        #answer-input:focus { outline: none; border-color: var(--primary-color); }
+        #answer-input.correct { border-color: var(--success-color); }
+        #answer-input.incorrect { border-color: var(--danger-color); }
+
+        #feedback-text { min-height: 24px; font-weight: bold; font-size: 1.1em; text-align: center; }
+        .feedback-correct { color: var(--success-color); }
+        .feedback-incorrect { color: var(--danger-color); }
+        .feedback-hint { color: #555; }
+
+        #navigation { width: 100%; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        
+        .btn {
+            padding: 12px; font-size: 1em; border: none; border-radius: 8px;
+            cursor: pointer; font-weight: bold; transition: opacity 0.2s, background-color 0.2s;
+        }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        #check-btn { background-color: var(--primary-color); color: white; grid-column: 1 / -1; }
+        #hint-btn { background-color: var(--warning-color); color: var(--dark-gray); }
+        #next-btn { background-color: var(--success-color); color: white; }
+        #show-learned-btn { background-color: var(--secondary-color); color: white; grid-column: 1 / -1; margin-top: 5px; }
+        #review-btn { background-color: var(--review-color); color: white; grid-column: 1 / -1; margin-top: 5px; }
+        #exit-review-btn { background-color: var(--danger-color); color: white; grid-column: 1 / -1; margin-top: 5px; display: none; }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center;
+            opacity: 0; visibility: hidden; transition: opacity 0.3s, visibility 0.3s; z-index: 1000;
+        }
+        .modal-overlay.visible { opacity: 1; visibility: visible; }
+        .modal-content {
+            background: #fff; padding: 25px 30px; border-radius: var(--border-radius);
+            width: 90%; max-width: 400px; box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            transform: translateY(-50px); transition: transform 0.3s;
+        }
+        .modal-overlay.visible .modal-content { transform: translateY(0); }
+        .modal-content h2 { text-align: center; font-size: 1.3em; margin-top: 0; margin-bottom: 15px; color: var(--dark-gray); }
+        #learned-words-list {
+            list-style: none; padding: 0; margin: 0 0 20px 0; max-height: 250px;
+            overflow-y: auto; display: flex; flex-wrap: wrap; gap: 8px;
+        }
+        #learned-words-list li { background-color: #e9ecef; color: var(--dark-gray); padding: 5px 10px; border-radius: 6px; font-size: 0.9em; }
+        #modal-close-btn { width: 100%; background-color: var(--secondary-color); color: white; }
+    </style>
+</head>
+<body>
+    <div id="app-container">
+        <div id="stats-container">
+            <span id="score-text"></span>
+            <span id="progress-text"></span>
+        </div>
+        <div class="flashcard-scene">
+            <div class="flashcard" id="flashcard">
+                <div class="card-face card-face-front"></div>
+                <div class="card-face card-face-back"></div>
+            </div>
+        </div>
+        <div id="feedback-text"></div>
+        <div id="input-container">
+            <input type="text" id="answer-input" placeholder="Type the English translation...">
+        </div>
+        <div id="navigation">
+            <button class="btn" id="check-btn">Check Answer</button>
+            <button class="btn" id="hint-btn">Hint</button>
+            <button class="btn" id="next-btn">Next</button>
+            <button class="btn" id="show-learned-btn">已學習的單字</button>
+            <button class="btn" id="review-btn" disabled>複習困難單字</button>
+            <button class="btn" id="exit-review-btn">返回主牌組</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal-content">
+            <h2>已學習的單字</h2>
+            <ul id="learned-words-list"></ul>
+            <button class="btn" id="modal-close-btn">關閉</button>
+        </div>
+    </div>
+
+    <script>
+        const vocabulary = [
+            { en: 'Apple', zh: '蘋果' }, { en: 'Book', zh: '書' }, { en: 'Cat', zh: '貓' },
+            { en: 'Dog', zh: '狗' }, { en: 'Computer', zh: '電腦' }, { en: 'Water', zh: '水' },
+            { en: 'Sun', zh: '太陽' }, { en: 'Moon', zh: '月亮' }, { en: 'Friend', zh: '朋友' },
+            { en: 'Code', zh: '代碼' }, { en: 'House', zh: '房子' }, { en: 'Car', zh: '車' },
+            { en: 'Tree', zh: '樹' }, { en: 'Flower', zh: '花' }, { en: 'Sky', zh: '天空' },
+            { en: 'Star', zh: '星星' }, { en: 'Food', zh: '食物' }, { en: 'Drink', zh: '飲料' },
+            { en: 'Chair', zh: '椅子' }, { en: 'Table', zh: '桌子' }, { en: 'Run', zh: '跑' },
+            { en: 'Walk', zh: '走路' }, { en: 'Eat', zh: '吃' }, { en: 'Sleep', zh: '睡覺' },
+            { en: 'Read', zh: '閱讀' }, { en: 'Write', zh: '寫' }, { en: 'Think', zh: '思考' },
+            { en: 'Play', zh: '玩' }, { en: 'Work', zh: '工作' }, { en: 'Love', zh: '愛' },
+            { en: 'Happy', zh: '快樂' }, { en: 'Sad', zh: '傷心' }, { en: 'Big', zh: '大的' },
+            { en: 'Small', zh: '小的' }, { en: 'Hot', zh: '熱的' }, { en: 'Cold', zh: '冷的' },
+            { en: 'Good', zh: '好的' }, { en: 'Bad', zh: '壞的' }, { en: 'Red', zh: '紅色' },
+            { en: 'Blue', zh: '藍色' }, { en: 'Family', zh: '家庭' }, { en: 'Mother', zh: '母親' },
+            { en: 'Father', zh: '父親' }, { en: 'Brother', zh: '兄弟' }, { en: 'Sister', zh: '姐妹' },
+            { en: 'School', zh: '學校' }, { en: 'Teacher', zh: '老師' }, { en: 'Student', zh: '學生' },
+            { en: 'Money', zh: '錢' }, { en: 'Time', zh: '時間' }
+        ];
+
+        const ui = {
+            body: document.body,
+            flashcard: document.getElementById('flashcard'),
+            cardFront: document.querySelector('.card-face-front'),
+            cardBack: document.querySelector('.card-face-back'),
+            answerInput: document.getElementById('answer-input'),
+            checkBtn: document.getElementById('check-btn'),
+            hintBtn: document.getElementById('hint-btn'),
+            nextBtn: document.getElementById('next-btn'),
+            progressText: document.getElementById('progress-text'),
+            scoreText: document.getElementById('score-text'),
+            feedbackText: document.getElementById('feedback-text'),
+            showLearnedBtn: document.getElementById('show-learned-btn'),
+            reviewBtn: document.getElementById('review-btn'),
+            exitReviewBtn: document.getElementById('exit-review-btn'),
+            modalOverlay: document.getElementById('modal-overlay'),
+            modalCloseBtn: document.getElementById('modal-close-btn'),
+            learnedList: document.getElementById('learned-words-list')
+        };
+        
+        let state = {
+            currentCardIndex: 0, score: 0, answeredCurrentCard: false,
+            isReviewMode: false,
+            learnedWords: new Set(),
+            hintedWords: new Set()
+        };
+        let activeDeck = vocabulary;
+
+        function showCard(index) {
+            state.answeredCurrentCard = false;
+            ui.flashcard.classList.remove('is-flipped');
+            ui.answerInput.value = '';
+            ui.answerInput.className = '';
+            ui.answerInput.disabled = false;
+            ui.feedbackText.textContent = '';
+            ui.checkBtn.disabled = false;
+            ui.hintBtn.disabled = false;
+
+            const cardData = activeDeck[index];
+            ui.cardFront.textContent = cardData.zh;
+            ui.cardBack.textContent = cardData.en;
+            
+            ui.progressText.textContent = `Card: ${index + 1}/${activeDeck.length}`;
+            ui.scoreText.textContent = `Score: ${state.score}/${activeDeck.length}`;
+        }
+
+        function checkAnswer() {
+            if (state.answeredCurrentCard) return;
+            const userAnswer = ui.answerInput.value.trim().toLowerCase();
+            const currentCard = activeDeck[state.currentCardIndex];
+            const correctAnswer = currentCard.en.toLowerCase();
+            
+            if (userAnswer === correctAnswer) {
+                if (!state.isReviewMode) { // Only score and track learned words in normal mode
+                    state.score++;
+                    state.learnedWords.add(currentCard.en);
+                    updateLearnedWordsDisplay();
+                }
+                // If you get a hinted word right, it's no longer "difficult"
+                state.hintedWords.delete(currentCard);
+                ui.reviewBtn.disabled = state.hintedWords.size === 0;
+
+                ui.feedbackText.textContent = "Correct!";
+                ui.feedbackText.className = "feedback-correct";
+                ui.answerInput.classList.add('correct');
+            } else {
+                ui.feedbackText.textContent = `Incorrect. The answer is "${currentCard.en}".`;
+                ui.feedbackText.className = "feedback-incorrect";
+                ui.answerInput.classList.add('incorrect');
+            }
+            revealAnswer();
+        }
+
+        function showHint() {
+            if (state.answeredCurrentCard) return;
+            const currentCard = activeDeck[state.currentCardIndex];
+            ui.feedbackText.textContent = `The answer is "${currentCard.en}".`;
+            ui.feedbackText.className = "feedback-hint";
+            
+            if (!state.isReviewMode) {
+                state.hintedWords.add(currentCard);
+                ui.reviewBtn.disabled = false;
+            }
+            revealAnswer();
+        }
+
+        function revealAnswer() {
+            state.answeredCurrentCard = true;
+            ui.flashcard.classList.add('is-flipped');
+            ui.answerInput.disabled = true;
+            ui.checkBtn.disabled = true;
+            ui.hintBtn.disabled = true;
+            if (!state.isReviewMode) {
+                ui.scoreText.textContent = `Score: ${state.score}/${activeDeck.length}`;
+            }
+        }
+        
+        function updateLearnedWordsDisplay() {
+            ui.learnedList.innerHTML = '';
+            const sortedWords = [...state.learnedWords].sort();
+            if (sortedWords.length === 0) {
+                ui.learnedList.innerHTML = '<li>尚未學習任何單字</li>'; return;
+            }
+            for(const word of sortedWords) {
+                const li = document.createElement('li'); li.textContent = word;
+                ui.learnedList.appendChild(li);
+            }
+        }
+
+        function showNextCard() {
+            state.currentCardIndex++;
+            if (state.currentCardIndex >= activeDeck.length) {
+                if(state.isReviewMode) {
+                    exitReview();
+                    ui.feedbackText.textContent = "困難單字複習完畢！";
+                    return;
+                }
+                // Loop main deck
+                state.currentCardIndex = 0;
+                state.score = 0;
+                state.learnedWords.clear();
+                updateLearnedWordsDisplay();
+            }
+            showCard(state.currentCardIndex);
+        }
+
+        function startReview() {
+            if (state.hintedWords.size === 0) return;
+            state.isReviewMode = true;
+            activeDeck = [...state.hintedWords];
+            state.currentCardIndex = 0;
+            
+            ui.body.classList.add('review-mode');
+            ui.hintBtn.style.display = 'none';
+            ui.reviewBtn.style.display = 'none';
+            ui.showLearnedBtn.style.display = 'none';
+            ui.exitReviewBtn.style.display = 'block';
+            showCard(state.currentCardIndex);
+        }
+
+        function exitReview() {
+            state.isReviewMode = false;
+            activeDeck = vocabulary;
+            state.currentCardIndex = 0; // Or restore previous index
+            
+            ui.body.classList.remove('review-mode');
+            ui.hintBtn.style.display = 'block';
+            ui.reviewBtn.style.display = 'block';
+            ui.showLearnedBtn.style.display = 'block';
+            ui.exitReviewBtn.style.display = 'none';
+            showCard(state.currentCardIndex);
+        }
+
+        function openModal() { ui.modalOverlay.classList.add('visible'); }
+        function closeModal() { ui.modalOverlay.classList.remove('visible'); }
+
+        // Event Listeners
+        ui.checkBtn.addEventListener('click', checkAnswer);
+        ui.hintBtn.addEventListener('click', showHint);
+        ui.nextBtn.addEventListener('click', showNextCard);
+        ui.reviewBtn.addEventListener('click', startReview);
+        ui.exitReviewBtn.addEventListener('click', exitReview);
+        ui.answerInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') checkAnswer(); });
+        ui.showLearnedBtn.addEventListener('click', openModal);
+        ui.modalCloseBtn.addEventListener('click', closeModal);
+        ui.modalOverlay.addEventListener('click', (e) => { if (e.target === ui.modalOverlay) closeModal(); });
+
+        // Initial Load
+        document.addEventListener('DOMContentLoaded', () => {
+            showCard(state.currentCardIndex);
+            updateLearnedWordsDisplay();
+        });
+    </script>
+</body>
+</html>
+
